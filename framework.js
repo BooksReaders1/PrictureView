@@ -371,12 +371,27 @@
             return;
         }
 
+        // 规范化 type 参数（支持大小写）
+        const normalizedType = state.type.toLowerCase();
+        let actualType = '';
+        
+        // 查找匹配的来源（不区分大小写）
+        for (const sourceName of Object.keys(sources)) {
+            if (sourceName.toLowerCase() === normalizedType) {
+                actualType = sourceName;
+                break;
+            }
+        }
+
         // 检查是否有对应的 source
-        if (!sources[state.type]) {
+        if (!actualType || !sources[actualType]) {
             $('#contentTitle').textContent = `未知的类型：${state.type}`;
-            showToast(`不支持的类型：${state.type}`);
+            showToast(`不支持的类型：${state.type}。支持的类型：${Object.keys(sources).join(', ')}`);
             return;
         }
+        
+        // 使用实际的来源名称（保持注册时的大小写）
+        state.type = actualType;
 
         // 初始化悬浮窗和抽屉
         initFloatingWindow();
@@ -403,10 +418,19 @@
         init
     };
 
-    // 自动初始化
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    // 延迟初始化：等待 DOMContentLoaded 并且给 source 脚本时间注册
+    function delayedInit() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                // DOM 加载完成后，再等一小段时间确保所有 source 脚本已执行
+                setTimeout(init, 10);
+            });
+        } else {
+            // DOM 已就绪，但还需要给 source 脚本一点时间注册
+            setTimeout(init, 10);
+        }
     }
+
+    // 启动延迟初始化
+    delayedInit();
 })();

@@ -6,6 +6,12 @@
 (function() {
     'use strict';
 
+    // 确保 Framework 已加载
+    if (!window.Framework) {
+        console.error('Framework not loaded yet, skipping pixiv source registration');
+        return;
+    }
+
     const F = window.Framework;
 
     // ========== Pixiv 特有逻辑 ==========
