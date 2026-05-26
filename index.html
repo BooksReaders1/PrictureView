@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>漫画/图片查看</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: #f5f5f5; padding-top: 60px; }
+        .header { position: fixed; top: 0; left: 0; right: 0; height: 60px; background-color: #333; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0 20px; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        .header-title { font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; text-align: center; }
+        .header-page { font-size: 14px; color: #aaa; margin-left: 15px; white-space: nowrap; }
+        .content-container { width: 100%; max-width: 1000px; margin: 0 auto; }
+        .page-wrapper { width: 100%; margin-bottom: 5px; background-color: #e0e0e0; min-height: 200px; }
+        .page-wrapper.loaded { background-color: transparent; }
+        .loading { display: flex; align-items: center; justify-content: center; min-height: 200px; color: #999; font-size: 14px; }
+        .loading::after { content: ""; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #666; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error { display: flex; align-items: center; justify-content: center; min-height: 200px; color: #e74c3c; font-size: 14px; cursor: pointer; }
+        .error::before { content: "⚠"; margin-right: 8px; font-size: 18px; }
+        .display-image { max-width: 100%; height: auto; display: block; object-fit: contain; }
+        .source-image { display: none; }
+        .toast { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 9999; opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+        .toast.show { opacity: 1; }
+        
+        /* 悬浮窗样式 */
+        .floating-btn {
+            position: fixed;
+            top: 70px;
+            left: 10px;
+            width: 40px;
+            height: 40px;
+            background-color: #000;
+            border-radius: 8px;
+            cursor: move;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            user-select: none;
+        }
+        .floating-btn.hidden {
+            display: none;
+        }
+        .hamburger-icon {
+            width: 20px;
+            height: 2px;
+            background-color: #fff;
+            position: relative;
+        }
+        .hamburger-icon::before,
+        .hamburger-icon::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 2px;
+            background-color: #fff;
+            left: 0;
+        }
+        .hamburger-icon::before {
+            top: -6px;
+        }
+        .hamburger-icon::after {
+            bottom: -6px;
+        }
+        
+        /* 抽屉样式 */
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 10001;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .drawer-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .drawer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            max-width: 80vw;
+            height: 100vh;
+            background-color: #000;
+            z-index: 10002;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .drawer.show {
+            transform: translateX(0);
+        }
+        .drawer-header {
+            color: #fff;
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+        .drawer-item {
+            color: #fff;
+            padding: 12px 0;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .drawer-item:hover {
+            background-color: #222;
+            margin: 0 -10px;
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        .drawer-item:last-child {
+            border-bottom: none;
+        }
+        .drawer-input-container {
+            display: none;
+            margin-top: 10px;
+        }
+        .drawer-input-container.show {
+            display: block;
+        }
+        .drawer-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background-color: #222;
+            color: #fff;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .drawer-input:focus {
+            outline: none;
+            border-color: #555;
+        }
+        .drawer-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .drawer-btn:hover {
+            background-color: #444;
+        }
+        
+        @media (max-width: 768px) { .header { height: 50px; padding: 0 15px; } body { padding-top: 50px; } .header-title { font-size: 14px; } .header-page { font-size: 12px; } .content-container { max-width: 100%; } }
+    </style>
+</head>
+<body>
+    <div class="header"><div class="header-title" id="contentTitle">加载中...</div><div class="header-page" id="pageInfo">1 / 1</div></div>
+    <div class="content-container" id="contentContainer"></div>
+    <div id="toast" class="toast"></div>
+    
+    <!-- 悬浮窗 -->
+    <div class="floating-btn" id="floatingBtn">
+        <div class="hamburger-icon"></div>
+    </div>
+    
+    <!-- 抽屉遮罩层 -->
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+    
+    <!-- 抽屉 -->
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">菜单</div>
+        <div class="drawer-item" id="downloadItem">下载</div>
+        <div class="drawer-item" id="downloadAllItem">下载所有 (zip)（实验性功能）</div>
+        <div class="drawer-item" id="hideFloatingBtnItem">隐藏悬浮窗</div>
+        <div class="drawer-item" id="switchContentItem">切换</div>
+        <!-- iOS 非 Safari 浏览器专用下载按钮容器 -->
+        <div class="drawer-input-container" id="iosDownloadContainer">
+            <div style="color: #fff; font-size: 14px; margin-bottom: 10px;">ZIP 已生成，请点击下方按钮下载</div>
+            <button class="drawer-btn" id="manualDownloadBtn">手动下载 ZIP</button>
+        </div>
+        <div class="drawer-input-container" id="switchContentInputContainer">
+            <input type="text" class="drawer-input" id="switchContentInput" placeholder="输入 ID">
+            <button class="drawer-btn" id="confirmSwitchBtn">确认切换</button>
+        </div>
+    </div>
+    
+    <!-- 引入 MD5 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.19.0/js/md5.min.js"></script>
+    <!-- 引入 JSZip 库用于生成 zip 文件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- 图片源逻辑脚本 -->
+    <script src="source-pixiv.js"></script>
+    <script src="source-jm.js"></script>
+    
+    <!-- 页面框架核心脚本（必须在 source 脚本之后） -->
+    <script src="framework.js"></script>
+</body>
+</html>
