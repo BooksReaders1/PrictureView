@@ -199,11 +199,11 @@
     <!-- 引入 JSZip 库用于生成 zip 文件 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
-    <!-- 图片源逻辑脚本 -->
+    <!-- 页面框架核心脚本（必须先加载，以便 source 脚本可以注册） -->
+    <script src="framework.js"></script>
+    
+    <!-- 图片源逻辑脚本（在 framework 之后加载，以便注册到 Framework） -->
     <script src="source-pixiv.js"></script>
     <script src="source-jm.js"></script>
-    
-    <!-- 页面框架核心脚本（必须在 source 脚本之后） -->
-    <script src="framework.js"></script>
 </body>
 </html>
