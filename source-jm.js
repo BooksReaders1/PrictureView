@@ -191,6 +191,11 @@
                     container.classList.add('loaded');
                     F.state.loadedCount++;
                     F.updatePageInfo();
+                    
+                    // 通知框架图片加载成功（用于懒加载机制）
+                    if (F.markImageLoaded) {
+                        F.markImageLoaded(index);
+                    }
                 } else {
                     console.warn(`页 ${index}: 图片处理失败，将重试`);
                     throw new Error('图片处理返回失败');
@@ -204,6 +209,10 @@
                     setTimeout(() => loadPage(index, retryCount + 1), 1000 * (retryCount + 1));
                 } else {
                     F.showError(container, () => loadPage(index, 0));
+                    // 通知框架图片加载失败
+                    if (F.markImageFailed) {
+                        F.markImageFailed(index);
+                    }
                 }
             }
         };
@@ -215,6 +224,10 @@
                 setTimeout(() => loadPage(index, retryCount + 1), 1000 * (retryCount + 1));
             } else {
                 F.showError(container, () => loadPage(index, 0));
+                // 通知框架图片加载失败
+                if (F.markImageFailed) {
+                    F.markImageFailed(index);
+                }
             }
         };
         
@@ -460,7 +473,8 @@
             container.appendChild(createPageElement(i));
         }
         
-        loadPagesConcurrently(1, Math.min(F.CONFIG.CONCURRENT_LOAD, F.state.totalPages));
+        // 初始阶段：只加载前 3 张图片，由框架的懒加载机制处理
+        // 不需要在这里主动加载，handleScrollLazyLoad 会在初始化后自动触发
     }
 
     // 注册到 Framework

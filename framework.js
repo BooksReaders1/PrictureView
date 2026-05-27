@@ -28,7 +28,24 @@
     const CONFIG = {
         MAX_PAGES: 100,
         CONCURRENT_LOAD: 8,
-        BATCH_SIZE: 8
+        BATCH_SIZE: 8,
+        INITIAL_LOAD_COUNT: 3,      // 初始加载图片数量
+        PROBE_AHEAD_PAGES: 1,       // 探测阶段向前探测的页数
+        CONTINUOUS_BATCH_SIZE: 5,   // 连续加载阶段每批加载的图片数量
+        MAX_CONSECUTIVE_FAILURES: 3 // 连续失败次数上限
+    };
+
+    // ========== 懒加载状态管理 ==========
+    const lazyLoadState = {
+        phase: 'initial',           // 当前阶段：'initial', 'probing', 'continuous', 'finished'
+        nextToLoad: 4,              // 下一张待加载的图片索引（初始阶段后从第 4 张开始）
+        probeTarget: null,          // 当前探测目标页码
+        probeLoading: false,        // 探测页是否正在加载
+        probeLoaded: false,         // 探测页是否已加载完成
+        consecutiveFailures: 0,     // 连续失败计数
+        continuousLoading: false,   // 是否正在进行连续加载
+        loadingQueue: [],           // 加载队列
+        loadingSet: new Set()       // 正在加载的图片集合
     };
 
     // ========== Source 注册表 ==========
@@ -265,6 +282,214 @@
     }
 
     // ========== 核心功能 ==========
+    // ========== 懒加载核心逻辑 ==========
+    
+    // 重置懒加载状态
+    function resetLazyLoadState() {
+        lazyLoadState.phase = 'initial';
+        lazyLoadState.nextToLoad = 4;
+        lazyLoadState.probeTarget = null;
+        lazyLoadState.probeLoading = false;
+        lazyLoadState.probeLoaded = false;
+        lazyLoadState.consecutiveFailures = 0;
+        lazyLoadState.continuousLoading = false;
+        lazyLoadState.loadingQueue = [];
+        lazyLoadState.loadingSet.clear();
+    }
+
+    // 标记图片加载成功
+    function markImageLoaded(index) {
+        lazyLoadState.loadingSet.delete(index);
+        lazyLoadState.consecutiveFailures = 0;
+        
+        // 如果探测页加载完成
+        if (lazyLoadState.probeTarget === index) {
+            lazyLoadState.probeLoaded = true;
+            lazyLoadState.probeLoading = false;
+            // 开始连续加载阶段
+            startContinuousLoading();
+        }
+    }
+
+    // 标记图片加载失败
+    function markImageFailed(index) {
+        lazyLoadState.loadingSet.delete(index);
+        
+        // 如果探测页加载失败
+        if (lazyLoadState.probeTarget === index) {
+            lazyLoadState.probeLoading = false;
+            lazyLoadState.consecutiveFailures++;
+            
+            if (lazyLoadState.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
+                lazyLoadState.phase = 'finished';
+                showToast('已达到连续失败上限，停止加载');
+            } else {
+                // 继续探测下一页
+                lazyLoadState.probeTarget = lazyLoadState.nextToLoad++;
+                if (lazyLoadState.probeTarget <= state.totalPages) {
+                    triggerProbe();
+                }
+            }
+        }
+    }
+
+    // 触发探测阶段
+    function triggerProbe() {
+        if (lazyLoadState.phase !== 'probing') return;
+        if (lazyLoadState.probeLoading) return;
+        
+        const probeIndex = lazyLoadState.probeTarget;
+        if (!probeIndex || probeIndex > state.totalPages) {
+            lazyLoadState.phase = 'finished';
+            return;
+        }
+        
+        const container = document.getElementById(`page-${probeIndex}`);
+        if (!container) return;
+        
+        const img = container.querySelector('img');
+        if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
+            lazyLoadState.probeLoading = true;
+            lazyLoadState.loadingSet.add(probeIndex);
+            if (state.type && sources[state.type]) {
+                sources[state.type].loadPage(probeIndex);
+            }
+        } else {
+            // 如果已经加载过，直接视为探测成功
+            lazyLoadState.probeLoaded = true;
+            startContinuousLoading();
+        }
+    }
+
+    // 开始连续加载阶段
+    function startContinuousLoading() {
+        if (lazyLoadState.continuousLoading || lazyLoadState.phase !== 'probing') return;
+        
+        lazyLoadState.phase = 'continuous';
+        lazyLoadState.continuousLoading = true;
+        loadNextBatch();
+    }
+
+    // 加载下一批图片
+    function loadNextBatch() {
+        if (lazyLoadState.phase !== 'continuous') return;
+        if (lazyLoadState.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
+            lazyLoadState.phase = 'finished';
+            return;
+        }
+        
+        const startIndex = lazyLoadState.nextToLoad;
+        if (startIndex > state.totalPages) {
+            lazyLoadState.phase = 'finished';
+            lazyLoadState.continuousLoading = false;
+            return;
+        }
+        
+        const endIndex = Math.min(startIndex + CONFIG.CONTINUOUS_BATCH_SIZE - 1, state.totalPages);
+        const batch = [];
+        
+        for (let i = startIndex; i <= endIndex; i++) {
+            if (!lazyLoadState.loadingSet.has(i)) {
+                batch.push(i);
+                lazyLoadState.loadingSet.add(i);
+            }
+        }
+        
+        if (batch.length === 0) {
+            lazyLoadState.continuousLoading = false;
+            return;
+        }
+        
+        lazyLoadState.nextToLoad = endIndex + 1;
+        
+        // 批量加载
+        batch.forEach(index => {
+            const container = document.getElementById(`page-${index}`);
+            if (container) {
+                const img = container.querySelector('img');
+                if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
+                    if (state.type && sources[state.type]) {
+                        sources[state.type].loadPage(index);
+                    }
+                }
+            }
+        });
+        
+        // 等待当前批次加载完成后继续下一批
+        const checkBatchComplete = setInterval(() => {
+            const allLoadedOrFailed = batch.every(index => {
+                const container = document.getElementById(`page-${index}`);
+                return container && (container.classList.contains('loaded') || container.querySelector('.error'));
+            });
+            
+            if (allLoadedOrFailed) {
+                clearInterval(checkBatchComplete);
+                if (lazyLoadState.phase === 'continuous' && lazyLoadState.nextToLoad <= state.totalPages) {
+                    loadNextBatch();
+                } else {
+                    lazyLoadState.continuousLoading = false;
+                    if (lazyLoadState.nextToLoad > state.totalPages) {
+                        lazyLoadState.phase = 'finished';
+                    }
+                }
+            }
+        }, 100);
+    }
+
+    // 处理滚动时的懒加载
+    function handleScrollLazyLoad() {
+        const visiblePages = getVisiblePages();
+        if (visiblePages.length === 0) return;
+        
+        const currentPage = Math.min(...visiblePages);
+        
+        // 初始阶段：只加载前 3 张
+        if (lazyLoadState.phase === 'initial') {
+            const initialEnd = Math.min(CONFIG.INITIAL_LOAD_COUNT, state.totalPages);
+            for (let i = 1; i <= initialEnd; i++) {
+                const container = document.getElementById(`page-${i}`);
+                if (!container) continue;
+                const img = container.querySelector('img');
+                if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
+                    if (state.type && sources[state.type]) {
+                        sources[state.type].loadPage(i);
+                    }
+                }
+            }
+            
+            // 初始加载完成后进入探测阶段
+            if (state.loadedCount >= CONFIG.INITIAL_LOAD_COUNT || state.loadedCount >= state.totalPages) {
+                lazyLoadState.phase = 'probing';
+                lazyLoadState.probeTarget = lazyLoadState.nextToLoad;
+                if (lazyLoadState.probeTarget <= state.totalPages) {
+                    triggerProbe();
+                } else {
+                    lazyLoadState.phase = 'finished';
+                }
+            }
+        }
+        // 探测阶段：用户滚动时触发探测
+        else if (lazyLoadState.phase === 'probing') {
+            // 检查是否需要更新探测目标（用户滚动到接近已加载区域）
+            const lastLoadedPage = Array.from(document.querySelectorAll('.page-wrapper.loaded'))
+                .map(el => parseInt(el.id.replace('page-', '')))
+                .reduce((max, val) => Math.max(max, val), 0);
+            
+            if (currentPage >= lastLoadedPage - 2 && !lazyLoadState.probeLoading && !lazyLoadState.probeLoaded) {
+                triggerProbe();
+            }
+        }
+        // 连续加载阶段：自动批量加载（由 loadNextBatch 自动进行）
+        else if (lazyLoadState.phase === 'continuous') {
+            // 连续加载是自动进行的，不需要额外触发
+            // 但如果因为错误停止了，可以尝试恢复
+            if (!lazyLoadState.continuousLoading && lazyLoadState.nextToLoad <= state.totalPages) {
+                startContinuousLoading();
+            }
+        }
+    }
+
+    // ========== 核心功能 ==========
     function switchTo(newId) {
         const url = new URL(window.location.href);
         if (state.type === 'pixiv') {
@@ -289,6 +514,9 @@
         state.hasShownEndMessage = false;
         state.imageUrls = [];
         state.hasTriggeredDownload = false;
+        
+        // 重置懒加载状态
+        resetLazyLoadState();
 
         if (state.iosZipUrl) {
             URL.revokeObjectURL(state.iosZipUrl);
@@ -312,20 +540,8 @@
     }
 
     function loadPagesAroundCurrentPage() {
-        const visiblePages = getVisiblePages();
-        if (visiblePages.length === 0) return;
-        const currentPage = Math.min(...visiblePages);
-        
-        for (let i = currentPage; i < currentPage + CONFIG.BATCH_SIZE && i <= state.totalPages; i++) {
-            const container = document.getElementById(`page-${i}`);
-            if (!container) continue;
-            const img = container.querySelector('img');
-            if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
-                if (state.type && sources[state.type]) {
-                    sources[state.type].loadPage(i);
-                }
-            }
-        }
+        // 使用新的懒加载逻辑
+        handleScrollLazyLoad();
     }
 
     function setupScrollListener() {
@@ -415,7 +631,9 @@
         updatePageInfo,
         getVisiblePages,
         switchTo,
-        init
+        init,
+        markImageLoaded,
+        markImageFailed
     };
 
     // 延迟初始化：等待 DOMContentLoaded 并且给 source 脚本时间注册
