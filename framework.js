@@ -331,12 +331,51 @@
         const modalBody = document.getElementById('changelog-modal-body');
 
         // 生成更新日志 HTML
-        let html = '';\n        CHANGELOG_DATA.forEach((entry, index) => {\n            const isNewTag = index === 0 ? '<span class="changelog-new-tag">NEW</span>' : '';\n            html += `\n                <div class="changelog-entry">\n                    <div class="changelog-entry-header">\n                        <span class="changelog-entry-date">${escapeHtml(entry.date)}${isNewTag}</span>\n                    </div>\n                    <div class="changelog-entry-title">${escapeHtml(entry.title)}</div>\n                    <div class="changelog-entry-description">${escapeHtml(entry.description)}</div>\n                </div>\n            `;
-        });\n\n        modalBody.innerHTML = html;\n        modalOverlay.classList.add('show');\n\n        // 关闭抽屉\n        const drawer = document.getElementById('drawer');\n        const drawerOverlay = document.getElementById('drawerOverlay');\n        if (drawer && drawer.classList.contains('show')) {\n            drawer.classList.remove('show');
-        }\n        if (drawerOverlay && drawerOverlay.classList.contains('show')) {\n            drawerOverlay.classList.remove('show');
-        }\n    }\n\n    function closeChangelogModal(event) {\n        if (event.target.id === 'changelog-modal-overlay') {\n            const modalOverlay = document.getElementById('changelog-modal-overlay');\n            modalOverlay.classList.remove('show');
-        }\n    }\n\n    function closeChangelogModalBtn() {
-        const modalOverlay = document.getElementById('changelog-modal-overlay');\n        modalOverlay.classList.remove('show');\n    }\n\n    function escapeHtml(text) {\n        const div = document.createElement('div');\n        div.textContent = text;\n        return div.innerHTML;\n    }
+        let html = '';
+        CHANGELOG_DATA.forEach((entry, index) => {
+            const isNewTag = index === 0 ? '<span class="changelog-new-tag">NEW</span>' : '';
+            html += `
+                <div class="changelog-entry">
+                    <div class="changelog-entry-header">
+                        <span class="changelog-entry-date">${escapeHtml(entry.date)}${isNewTag}</span>
+                    </div>
+                    <div class="changelog-entry-title">${escapeHtml(entry.title)}</div>
+                    <div class="changelog-entry-description">${escapeHtml(entry.description)}</div>
+                </div>
+            `;
+        });
+
+        modalBody.innerHTML = html;
+        modalOverlay.classList.add('show');
+
+        // 关闭抽屉
+        const drawer = document.getElementById('drawer');
+        const drawerOverlay = document.getElementById('drawerOverlay');
+        if (drawer && drawer.classList.contains('show')) {
+            drawer.classList.remove('show');
+        }
+        if (drawerOverlay && drawerOverlay.classList.contains('show')) {
+            drawerOverlay.classList.remove('show');
+        }
+    }
+
+    function closeChangelogModal(event) {
+        if (event.target.id === 'changelog-modal-overlay') {
+            const modalOverlay = document.getElementById('changelog-modal-overlay');
+            modalOverlay.classList.remove('show');
+        }
+    }
+
+    function closeChangelogModalBtn() {
+        const modalOverlay = document.getElementById('changelog-modal-overlay');
+        modalOverlay.classList.remove('show');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 
     // ========== 核心功能 ==========
     function switchTo(newId) {
