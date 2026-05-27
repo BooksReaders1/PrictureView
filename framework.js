@@ -380,6 +380,11 @@
         modalOverlay.classList.remove('show');
     }
 
+    // 导出到全局作用域，以便 HTML onclick 可以调用
+    window.closeChangelogModalBtn = closeChangelogModalBtn;
+    window.showChangelogModal = showChangelogModal;
+    window.closeChangelogModal = closeChangelogModal;
+
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
