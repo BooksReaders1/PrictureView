@@ -125,39 +125,122 @@
         .drawer-item:last-child {
             border-bottom: none;
         }
-        .drawer-input-container {
-            display: none;
-            margin-top: 10px;
+        
+        /* 更新日志悬浮窗样式 */
+        .changelog-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 10003;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 50px;
         }
-        .drawer-input-container.show {
-            display: block;
+        .changelog-modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
         }
-        .drawer-input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #333;
-            border-radius: 4px;
-            background-color: #222;
-            color: #fff;
-            font-size: 14px;
-            margin-bottom: 10px;
+        .changelog-modal {
+            background-color: #fff;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        .drawer-input:focus {
-            outline: none;
-            border-color: #555;
+        .changelog-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e9ecef;
+            background-color: #f8f9fa;
         }
-        .drawer-btn {
-            width: 100%;
-            padding: 10px;
-            background-color: #333;
-            color: #fff;
+        .changelog-modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 0;
+        }
+        .changelog-modal-close {
+            background: none;
             border: none;
-            border-radius: 4px;
+            font-size: 24px;
             cursor: pointer;
-            font-size: 14px;
+            color: #6c757d;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
         }
-        .drawer-btn:hover {
-            background-color: #444;
+        .changelog-modal-close:hover {
+            background-color: #e9ecef;
+            color: #2c3e50;
+        }
+        .changelog-modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .changelog-entry {
+            margin-bottom: 28px;
+            padding: 16px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .changelog-entry:last-child {
+            margin-bottom: 0;
+        }
+        .changelog-entry-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .changelog-new-tag {
+            background-color: #28a745;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 3px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 1px 3px rgba(40, 167, 69, 0.3);
+        }
+        .changelog-entry-date {
+            font-size: 12px;
+            color: #6c757d;
+            font-weight: 500;
+            background-color: #e9ecef;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+        .changelog-entry-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 0 0 8px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #dee2e6;
+        }
+        .changelog-entry-description {
+            font-size: 14px;
+            color: #495057;
+            line-height: 1.7;
+            margin: 0;
+            text-align: left;
         }
         
         @media (max-width: 768px) { .header { height: 50px; padding: 0 15px; } body { padding-top: 50px; } .header-title { font-size: 14px; } .header-page { font-size: 12px; } .content-container { max-width: 100%; } }
@@ -183,6 +266,7 @@
         <div class="drawer-item" id="downloadAllItem">下载所有 (zip)（实验性功能）</div>
         <div class="drawer-item" id="hideFloatingBtnItem">隐藏悬浮窗</div>
         <div class="drawer-item" id="switchContentItem">切换</div>
+        <div class="drawer-item" id="changelogItem">📝 更新日志</div>
         <!-- iOS 非 Safari 浏览器专用下载按钮容器 -->
         <div class="drawer-input-container" id="iosDownloadContainer">
             <div style="color: #fff; font-size: 14px; margin-bottom: 10px;">ZIP 已生成，请点击下方按钮下载</div>
@@ -191,6 +275,19 @@
         <div class="drawer-input-container" id="switchContentInputContainer">
             <input type="text" class="drawer-input" id="switchContentInput" placeholder="输入 ID">
             <button class="drawer-btn" id="confirmSwitchBtn">确认切换</button>
+        </div>
+    </div>
+    
+    <!-- 更新日志悬浮窗 -->
+    <div id="changelog-modal-overlay" class="changelog-modal-overlay" onclick="closeChangelogModal(event)">
+        <div class="changelog-modal" onclick="event.stopPropagation()">
+            <div class="changelog-modal-header">
+                <h3 class="changelog-modal-title">📝 更新日志</h3>
+                <button class="changelog-modal-close" onclick="closeChangelogModalBtn()">&times;</button>
+            </div>
+            <div id="changelog-modal-body" class="changelog-modal-body">
+                <!-- 更新日志内容将通过 JavaScript 动态生成 -->
+            </div>
         </div>
     </div>
     
