@@ -308,6 +308,9 @@
             lazyLoadState.probeLoading = false;
             // 开始连续加载阶段
             startContinuousLoading();
+        } else if (lazyLoadState.phase === 'continuous') {
+            // 在连续加载阶段，每加载完一张立即开始下一张
+            startContinuousSingleLoad();
         }
     }
 
@@ -329,6 +332,16 @@
                 if (lazyLoadState.probeTarget <= state.totalPages) {
                     triggerProbe();
                 }
+            }
+        } else if (lazyLoadState.phase === 'continuous') {
+            // 在连续加载阶段，失败后也继续尝试下一张
+            lazyLoadState.consecutiveFailures++;
+            if (lazyLoadState.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
+                lazyLoadState.phase = 'finished';
+                lazyLoadState.continuousLoading = false;
+                showToast('已达到连续失败上限，停止加载');
+            } else {
+                startContinuousSingleLoad();
             }
         }
     }
@@ -370,7 +383,7 @@
         loadNextBatch();
     }
 
-    // 加载下一批图片
+    // 加载下一批图片（连续模式：每加载完一张立即开始下一张）
     function loadNextBatch() {
         if (lazyLoadState.phase !== 'continuous') return;
         if (lazyLoadState.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
@@ -385,55 +398,60 @@
             return;
         }
         
-        const endIndex = Math.min(startIndex + CONFIG.CONTINUOUS_BATCH_SIZE - 1, state.totalPages);
-        const batch = [];
-        
-        for (let i = startIndex; i <= endIndex; i++) {
-            if (!lazyLoadState.loadingSet.has(i)) {
-                batch.push(i);
-                lazyLoadState.loadingSet.add(i);
-            }
-        }
-        
-        if (batch.length === 0) {
+        // 启动一个连续加载任务，每次只加载一张，完成后立即加载下一张
+        startContinuousSingleLoad();
+    }
+    
+    // 连续单张加载：每加载完一张立即开始下一张
+    function startContinuousSingleLoad() {
+        if (lazyLoadState.phase !== 'continuous') return;
+        if (lazyLoadState.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
+            lazyLoadState.phase = 'finished';
             lazyLoadState.continuousLoading = false;
             return;
         }
         
-        lazyLoadState.nextToLoad = endIndex + 1;
+        const index = lazyLoadState.nextToLoad;
+        if (index > state.totalPages) {
+            lazyLoadState.phase = 'finished';
+            lazyLoadState.continuousLoading = false;
+            return;
+        }
         
-        // 批量加载
-        batch.forEach(index => {
-            const container = document.getElementById(`page-${index}`);
-            if (container) {
-                const img = container.querySelector('img');
-                if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
-                    if (state.type && sources[state.type]) {
-                        sources[state.type].loadPage(index);
-                    }
-                }
-            }
-        });
-        
-        // 等待当前批次加载完成后继续下一批
-        const checkBatchComplete = setInterval(() => {
-            const allLoadedOrFailed = batch.every(index => {
+        // 检查是否已经在加载中
+        if (lazyLoadState.loadingSet.has(index)) {
+            // 已经在加载中，等待完成后继续
+            const checkLoaded = setInterval(() => {
                 const container = document.getElementById(`page-${index}`);
-                return container && (container.classList.contains('loaded') || container.querySelector('.error'));
-            });
-            
-            if (allLoadedOrFailed) {
-                clearInterval(checkBatchComplete);
-                if (lazyLoadState.phase === 'continuous' && lazyLoadState.nextToLoad <= state.totalPages) {
-                    loadNextBatch();
-                } else {
-                    lazyLoadState.continuousLoading = false;
-                    if (lazyLoadState.nextToLoad > state.totalPages) {
-                        lazyLoadState.phase = 'finished';
-                    }
+                if (container && (container.classList.contains('loaded') || container.querySelector('.error'))) {
+                    clearInterval(checkLoaded);
+                    lazyLoadState.nextToLoad = index + 1;
+                    startContinuousSingleLoad();
                 }
+            }, 50);
+            return;
+        }
+        
+        lazyLoadState.loadingSet.add(index);
+        lazyLoadState.nextToLoad = index + 1;
+        
+        const container = document.getElementById(`page-${index}`);
+        if (container) {
+            const img = container.querySelector('img');
+            if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
+                if (state.type && sources[state.type]) {
+                    sources[state.type].loadPage(index);
+                }
+            } else {
+                // 如果已经加载过，直接继续下一张
+                lazyLoadState.nextToLoad = index + 1;
+                startContinuousSingleLoad();
             }
-        }, 100);
+        } else {
+            // 容器不存在，继续下一张
+            lazyLoadState.nextToLoad = index + 1;
+            startContinuousSingleLoad();
+        }
     }
 
     // 处理滚动时的懒加载
