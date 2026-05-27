@@ -16,6 +16,12 @@
 
     // ========== JM 特有逻辑 ==========
     
+    // 动态探测机制的状态变量
+    let consecutiveFailures = 0;
+    let actualTotalPages = null; // 探测到的实际总页数
+    let isDetectingEnd = true; // 是否正在探测结束位置
+    let lastSuccessfulPage = 0; // 最后成功加载的页码
+    
     // 检查图片 URL 是否有效
     async function checkImageUrl(url) {
         try {
@@ -91,48 +97,56 @@
         return true;
     }
 
-    // 发现所有可用的图片（通过探测 URL 存在性）
-    async function discoverImages(mangaId) {
-        const images = [];
+    // 发现所有可用的图片（通过探测 URL 存在性）- 仅用于初始化时获取第一张图片的 URL
+    // 懒加载机制改为边滚动边探测，而不是预先发现所有图片
+    async function discoverFirstImage(mangaId) {
+        const indexStr = String(1).padStart(5, '0');
+        const cdnDomain = 'https://cdn-msp.jm18c-uoe.cc';
+        const imgUrl = `${cdnDomain}/media/photos/${mangaId}/${indexStr}.webp`;
         
-        // 使用并发请求来加速图片发现
-        const batchSize = 10;
-        let i = 1;
-        let consecutiveNotFound = 0;
-        
-        while (i <= F.CONFIG.MAX_PAGES && consecutiveNotFound < 3) {
-            const batchEnd = Math.min(i + batchSize - 1, F.CONFIG.MAX_PAGES);
-            const batchUrls = [];
-            
-            for (let j = i; j <= batchEnd; j++) {
-                const indexStr = String(j).padStart(5, '0');
-                const cdnDomain = 'https://cdn-msp.jm18c-uoe.cc';
-                const imgUrl = `${cdnDomain}/media/photos/${mangaId}/${indexStr}.webp`;
-                batchUrls.push({ index: j, url: imgUrl });
-            }
-            
-            const results = await Promise.all(
-                batchUrls.map(item => 
-                    checkImageUrl(item.url).then(exists => ({ ...item, exists }))
-                )
-            );
-            
-            for (const result of results) {
-                if (result.exists) {
-                    images.push({ url: result.url, number: result.index });
-                    consecutiveNotFound = 0;
-                } else {
-                    consecutiveNotFound++;
-                    if (consecutiveNotFound >= 3) {
-                        break;
-                    }
-                }
-            }
-            
-            i = batchEnd + 1;
+        const exists = await checkImageUrl(imgUrl);
+        if (exists) {
+            return [{ index: 1, url: imgUrl }];
         }
-        
-        return images;
+        return [];
+    }
+
+    // 构建图片 URL
+    function buildImageUrl(mangaId, pageNum) {
+        const indexStr = String(pageNum).padStart(5, '0');
+        const cdnDomain = 'https://cdn-msp.jm18c-uoe.cc';
+        return `${cdnDomain}/media/photos/${mangaId}/${indexStr}.webp`;
+    }
+
+    // 重置动态探测机制的状态
+    function resetDetectionState() {
+        consecutiveFailures = 0;
+        actualTotalPages = null;
+        isDetectingEnd = true;
+        lastSuccessfulPage = 0;
+    }
+
+    // 在图片加载成功时重置连续失败计数器
+    function resetFailureCounter(successfulPageIndex) {
+        if (isDetectingEnd) {
+            consecutiveFailures = 0;
+            // 更新最后成功加载的页码（只增不减）
+            if (successfulPageIndex > lastSuccessfulPage) {
+                lastSuccessfulPage = successfulPageIndex;
+            }
+            console.log(`页 ${successfulPageIndex} 加载成功，连续失败计数重置为 0，最后成功页码：${lastSuccessfulPage}`);
+        }
+    }
+
+    // 移除不存在的页面元素
+    function removeNonExistentPages(actualPages) {
+        const container = document.getElementById('contentContainer');
+        for (let i = actualPages + 1; i <= F.CONFIG.MAX_PAGES; i++) {
+            const pageEl = document.getElementById(`page-${i}`);
+            if (pageEl) {
+                pageEl.remove();
+            }
+        }
     }
 
     // 创建页面元素
@@ -167,13 +181,8 @@
         F.showLoading(container);
         const maxRetries = 3;
         
-        // 从已发现的图片 URL 列表中获取
-        const imgUrl = F.state.imageUrls[index - 1] ? F.state.imageUrls[index - 1].url : '';
-        if (!imgUrl) {
-            img.removeAttribute('data-loading');
-            F.showError(container, () => loadPage(index, 0));
-            return;
-        }
+        // 动态构建图片 URL
+        const imgUrl = buildImageUrl(F.state.id, index);
         
         // 确保图片元素已挂载到 DOM
         if (!img.isConnected) {
@@ -184,13 +193,17 @@
         
         img.onload = function() {
             try {
+                // 清除 loading 状态（此时 img 已加载完成，但 canvas 还未创建）
                 F.clearLoadingState(container);
                 
                 var success = processImage(img, index);
                 if (success) {
                     container.classList.add('loaded');
                     F.state.loadedCount++;
+                    resetFailureCounter(index); // 重置连续失败计数器
                     F.updatePageInfo();
+                    // 图片加载完成后触发继续加载
+                    loadPagesAroundCurrentPage();
                 } else {
                     console.warn(`页 ${index}: 图片处理失败，将重试`);
                     throw new Error('图片处理返回失败');
@@ -211,6 +224,31 @@
         img.onerror = function(e) {
             console.warn(`加载图片失败 (页 ${index}), 重试次数：${retryCount}, 错误事件:`, e);
             img.removeAttribute('data-loading');
+            
+            // 动态探测机制：记录连续失败（只在顺序探测时有效）
+            if (isDetectingEnd && retryCount >= maxRetries) {
+                // 只有当失败的页码是紧接着最后成功页码的下一页时，才计入连续失败
+                if (index === lastSuccessfulPage + consecutiveFailures + 1) {
+                    consecutiveFailures++;
+                    console.log(`页 ${index} 加载失败，连续失败次数：${consecutiveFailures}，最后成功页码：${lastSuccessfulPage}`);
+                    
+                    // 如果连续 3 次失败，认为已经获取到全部图片
+                    if (consecutiveFailures >= 3 && actualTotalPages === null) {
+                        actualTotalPages = lastSuccessfulPage; // 最后成功加载的页是最后一页
+                        F.state.totalPages = actualTotalPages;
+                        isDetectingEnd = false;
+                        console.log(`探测完成：实际总页数为 ${actualTotalPages}`);
+                        F.updatePageInfo();
+                        F.showToast(`漫画共 ${actualTotalPages} 页`);
+                        
+                        // 移除后续不存在的页面元素
+                        removeNonExistentPages(actualTotalPages);
+                    }
+                } else {
+                    console.log(`页 ${index} 不是顺序探测的目标页（期望页码：${lastSuccessfulPage + consecutiveFailures + 1}），不计入连续失败`);
+                }
+            }
+            
             if (retryCount < maxRetries) {
                 setTimeout(() => loadPage(index, retryCount + 1), 1000 * (retryCount + 1));
             } else {
@@ -221,40 +259,89 @@
         img.src = imgUrl;
     }
 
-    // 并发加载多页
+    // 并发加载多页 - 修改为懒加载模式：只加载前几页，其余边滚动边加载
     function loadPagesConcurrently(startIndex, count) {
-        const endIndex = Math.min(startIndex + count, F.state.totalPages);
-        const queue = [];
-        for (let i = startIndex; i <= endIndex; i++) queue.push(i);
-        
-        const processQueue = async () => {
-            while (queue.length > 0) {
-                const batch = queue.splice(0, F.CONFIG.CONCURRENT_LOAD);
-                const batchPromises = batch.map(index => new Promise(resolve => {
-                    loadPage(index);
-                    const checkLoaded = setInterval(() => {
-                        const container = document.getElementById(`page-${index}`);
-                        if (container && (container.classList.contains('loaded') || container.querySelector('.error'))) {
-                            clearInterval(checkLoaded);
-                            resolve();
-                        }
-                    }, 100);
-                }));
-                await Promise.all(batchPromises);
+        // 初始只加载前几页用于显示，而不是等待所有图片发现完成
+        const initialLoadCount = Math.min(count, F.CONFIG.CONCURRENT_LOAD);
+        for (let i = startIndex; i <= startIndex + initialLoadCount - 1 && i <= F.CONFIG.MAX_PAGES; i++) {
+            loadPage(i);
+        }
+    }
+
+    // 滚动时加载当前页面附近的图片
+    function loadPagesAroundCurrentPage() {
+        if (!isDetectingEnd) {
+            // 已经完成探测，按正常逻辑加载可见页面附近的图片
+            const visiblePages = F.getVisiblePages();
+            if (visiblePages.length === 0) return;
+            const currentPage = Math.min(...visiblePages);
+            
+            for (let i = currentPage; i < currentPage + F.CONFIG.BATCH_SIZE && i <= F.state.totalPages; i++) {
+                const container = document.getElementById(`page-${i}`);
+                if (!container) continue;
+                const img = container.querySelector('img');
+                if (!container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
+                    loadPage(i);
+                }
             }
-        };
-        processQueue();
+            return;
+        }
+        
+        // 动态探测机制：只加载顺序的下一页，用于探测是否还有更多图片
+        const nextPageToProbe = lastSuccessfulPage + 1;
+        let probePageIsLoadingOrLoaded = false;
+        
+        if (nextPageToProbe <= F.CONFIG.MAX_PAGES) {
+            const container = document.getElementById(`page-${nextPageToProbe}`);
+            if (container) {
+                const img = container.querySelector('img');
+                // 检查探测页是否已经在加载中或已处理
+                if (container.classList.contains('loaded') || container.querySelector('canvas') || (img && img.getAttribute('data-loading') === 'true')) {
+                    probePageIsLoadingOrLoaded = true;
+                } else {
+                    // 探测页还未加载，触发加载
+                    loadPage(nextPageToProbe);
+                    return; // 先加载探测页，等待结果
+                }
+            } else {
+                // 容器不存在，创建它
+                const contentContainer = document.getElementById('contentContainer');
+                contentContainer.appendChild(createPageElement(nextPageToProbe));
+                loadPage(nextPageToProbe);
+                return;
+            }
+        }
+        
+        // 如果探测页已经在加载中或已加载完成，说明当前页附近的图片已经加载完成
+        // 开始向下依次继续加载剩余所有图片
+        if (probePageIsLoadingOrLoaded) {
+            let nextUnloadedPage = lastSuccessfulPage + 1;
+            while (nextUnloadedPage <= F.CONFIG.MAX_PAGES) {
+                const container = document.getElementById(`page-${nextUnloadedPage}`);
+                if (!container) {
+                    // 容器不存在，创建它
+                    const contentContainer = document.getElementById('contentContainer');
+                    contentContainer.appendChild(createPageElement(nextUnloadedPage));
+                }
+                const img = container ? container.querySelector('img') : null;
+                // 跳过已加载、加载中或已处理的页面
+                if (container && !container.classList.contains('loaded') && !container.querySelector('canvas') && img && img.getAttribute('data-loading') !== 'true') {
+                    loadPage(nextUnloadedPage);
+                    // 并发加载，每次最多 CONCURRENT_LOAD 个
+                    if ((nextUnloadedPage - lastSuccessfulPage) % F.CONFIG.CONCURRENT_LOAD === 0) {
+                        break; // 等待下一批
+                    }
+                }
+                nextUnloadedPage++;
+            }
+        }
     }
 
     // 主动加载并处理单页图片（用于下载）
     async function loadAndProcessPage(pageNum) {
         return new Promise((resolve, reject) => {
-            // 从已发现的图片 URL 列表中获取
-            const imgUrl = F.state.imageUrls[pageNum - 1] ? F.state.imageUrls[pageNum - 1].url : '';
-            if (!imgUrl) {
-                resolve(null);
-                return;
-            }
+            // 动态构建图片 URL
+            const imgUrl = buildImageUrl(F.state.id, pageNum);
             
             const img = new Image();
             img.crossOrigin = 'anonymous';
@@ -439,28 +526,24 @@
         
         F.state.id = mangaId;
         document.getElementById('contentTitle').textContent = `漫画 ID: ${F.state.id}`;
-        F.showToast('正在发现图片...');
         
-        // 通过探测图片存在性来计算总页数
-        F.state.imageUrls = await discoverImages(mangaId);
-        F.state.totalPages = F.state.imageUrls.length;
+        // 重置动态探测机制的状态
+        resetDetectionState();
         
-        if (F.state.totalPages === 0) {
-            document.getElementById('contentContainer').innerHTML = '<div style="text-align:center;padding:50px;color:#666;">未找到任何图片</div>';
-            document.getElementById('pageInfo').textContent = '0 / 0';
-            F.showToast('未找到图片');
-            return;
-        }
-        
-        document.getElementById('pageInfo').textContent = `1 / ${F.state.totalPages}`;
-        
-        // 创建页面元素
+        // 初始化时不预先发现所有图片，只设置一个较大的总页数上限
+        // 实际页数会在加载过程中动态探测
+        F.state.totalPages = F.CONFIG.MAX_PAGES;
+        document.getElementById('pageInfo').textContent = `1 / ?`;
+
+        // 创建前几页的页面元素（其余页面在滚动时动态创建）
         const container = document.getElementById('contentContainer');
-        for (let i = 1; i <= F.state.totalPages; i++) {
+        const initialPageCount = Math.min(F.CONFIG.CONCURRENT_LOAD, F.CONFIG.MAX_PAGES);
+        for (let i = 1; i <= initialPageCount; i++) {
             container.appendChild(createPageElement(i));
         }
-        
-        loadPagesConcurrently(1, Math.min(F.CONFIG.CONCURRENT_LOAD, F.state.totalPages));
+
+        // 开始懒加载：只加载前几页，其余边滚动边加载
+        loadPagesConcurrently(1, initialPageCount);
     }
 
     // 注册到 Framework
@@ -468,6 +551,7 @@
         init,
         createPageElement,
         loadPage,
+        loadPagesAroundCurrentPage,
         downloadCurrent,
         downloadAll
     });
