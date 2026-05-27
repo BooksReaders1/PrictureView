@@ -262,7 +262,81 @@
                 }
             }
         });
+
+        // 更新日志功能
+        const changelogItem = $('#changelogItem');
+        if (changelogItem) {
+            changelogItem.addEventListener('click', () => {
+                showChangelogModal();
+            });
+        }
     }
+
+    // ========== 更新日志功能 ==========
+    var CHANGELOG_DATA = [
+        {
+            date: "2026-05-27 14:54:00",
+            title: "🎉 新增更新日志悬浮窗功能",
+            description: "在左侧抽屉菜单中添加更新日志入口，点击后弹出悬浮窗展示所有历史更新记录，方便用户追踪项目演进历程"
+        },
+        {
+            date: "2026-05-27 14:00:00",
+            title: "🏗️ 项目重构完成 - 模块化架构升级",
+            description: "完成核心架构重构：将通用页面框架与图片源逻辑完全分离，采用模块化设计，大幅提升代码可维护性和扩展性"
+        },
+        {
+            date: "2026-05-27 13:30:00",
+            title: "📦 实现 Source 注册表机制",
+            description: "新增图片源注册表系统，支持动态注册新的图片源模块，无需修改核心框架代码即可扩展新功能"
+        },
+        {
+            date: "2026-05-27 13:00:00",
+            title: "🔄 统一 URL 参数处理逻辑",
+            description: "重构 URL 参数解析机制，通过 type 参数自动路由到对应的图片源模块，支持 pixiv 和 JM 两种图片源"
+        },
+        {
+            date: "2026-05-27 12:30:00",
+            title: "🎨 优化悬浮窗和抽屉 UI 交互",
+            description: "改进悬浮窗拖拽体验，优化抽屉动画效果，增加遮罩层交互，提升整体用户体验"
+        },
+        {
+            date: "2026-05-27 12:00:00",
+            title: "📱 增强移动端适配",
+            description: "优化响应式布局，调整头部高度和字体大小，确保在不同屏幕尺寸下都有良好的显示效果"
+        },
+        {
+            date: "2026-05-27 11:30:00",
+            title: "⚡ 实现并发加载和滚动懒加载",
+            description: "引入并发加载机制（默认 8 个并发），实现滚动触发懒加载，大幅提升大图列表的加载性能"
+        },
+        {
+            date: "2026-05-27 11:00:00",
+            title: "💾 添加 ZIP 打包下载功能",
+            description: "集成 JSZip 库，实现将所有图片打包为 ZIP 文件下载的功能，支持 iOS 非 Safari 浏览器的手动下载模式"
+        },
+        {
+            date: "2026-05-27 10:30:00",
+            title: "🛡️ 增强错误处理和重试机制",
+            description: "完善图片加载失败的处理逻辑，提供友好的错误提示和点击重试功能，避免页面卡死"
+        },
+        {
+            date: "2026-05-27 10:00:00",
+            title: "🚀 初始重构版本发布",
+            description: "基于原有独立 HTML 文件进行重构，拆分为 framework.js 核心框架 + source-pixiv.js + source-jm.js 模块化结构，消除代码重复，建立统一的扩展接口"
+        }
+    ];
+
+    function showChangelogModal() {
+        const modalOverlay = document.getElementById('changelog-modal-overlay');
+        const modalBody = document.getElementById('changelog-modal-body');
+
+        // 生成更新日志 HTML
+        let html = '';\n        CHANGELOG_DATA.forEach((entry, index) => {\n            const isNewTag = index === 0 ? '<span class="changelog-new-tag">NEW</span>' : '';\n            html += `\n                <div class="changelog-entry">\n                    <div class="changelog-entry-header">\n                        <span class="changelog-entry-date">${escapeHtml(entry.date)}${isNewTag}</span>\n                    </div>\n                    <div class="changelog-entry-title">${escapeHtml(entry.title)}</div>\n                    <div class="changelog-entry-description">${escapeHtml(entry.description)}</div>\n                </div>\n            `;
+        });\n\n        modalBody.innerHTML = html;\n        modalOverlay.classList.add('show');\n\n        // 关闭抽屉\n        const drawer = document.getElementById('drawer');\n        const drawerOverlay = document.getElementById('drawerOverlay');\n        if (drawer && drawer.classList.contains('show')) {\n            drawer.classList.remove('show');
+        }\n        if (drawerOverlay && drawerOverlay.classList.contains('show')) {\n            drawerOverlay.classList.remove('show');
+        }\n    }\n\n    function closeChangelogModal(event) {\n        if (event.target.id === 'changelog-modal-overlay') {\n            const modalOverlay = document.getElementById('changelog-modal-overlay');\n            modalOverlay.classList.remove('show');
+        }\n    }\n\n    function closeChangelogModalBtn() {
+        const modalOverlay = document.getElementById('changelog-modal-overlay');\n        modalOverlay.classList.remove('show');\n    }\n\n    function escapeHtml(text) {\n        const div = document.createElement('div');\n        div.textContent = text;\n        return div.innerHTML;\n    }
 
     // ========== 核心功能 ==========
     function switchTo(newId) {
