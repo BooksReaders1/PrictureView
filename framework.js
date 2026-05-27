@@ -327,26 +327,35 @@
     ];
 
     function showChangelogModal() {
-        const modalOverlay = document.getElementById('changelog-modal-overlay');
-        const modalBody = document.getElementById('changelog-modal-body');
+        try {
+            const modalOverlay = document.getElementById('changelog-modal-overlay');
+            const modalBody = document.getElementById('changelog-modal-body');
 
-        // 生成更新日志 HTML
-        let html = '';
-        CHANGELOG_DATA.forEach((entry, index) => {
-            const isNewTag = index === 0 ? '<span class="changelog-new-tag">NEW</span>' : '';
-            html += `
-                <div class="changelog-entry">
-                    <div class="changelog-entry-header">
-                        <span class="changelog-entry-date">${escapeHtml(entry.date)}${isNewTag}</span>
+            if (!modalOverlay || !modalBody) {
+                console.error('更新日志悬浮窗元素未找到');
+                return;
+            }
+
+            // 生成更新日志 HTML
+            let html = '';
+            CHANGELOG_DATA.forEach((entry, index) => {
+                const isNewTag = index === 0 ? '<span class="changelog-new-tag">NEW</span>' : '';
+                html += `
+                    <div class="changelog-entry">
+                        <div class="changelog-entry-header">
+                            <span class="changelog-entry-date">${escapeHtml(entry.date)}${isNewTag}</span>
+                        </div>
+                        <div class="changelog-entry-title">${escapeHtml(entry.title)}</div>
+                        <div class="changelog-entry-description">${escapeHtml(entry.description)}</div>
                     </div>
-                    <div class="changelog-entry-title">${escapeHtml(entry.title)}</div>
-                    <div class="changelog-entry-description">${escapeHtml(entry.description)}</div>
-                </div>
-            `;
-        });
+                `;
+            });
 
-        modalBody.innerHTML = html;
-        modalOverlay.classList.add('show');
+            modalBody.innerHTML = html;
+            modalOverlay.classList.add('show');
+        } catch (error) {
+            console.error('显示更新日志失败:', error);
+        }
 
         // 关闭抽屉
         const drawer = document.getElementById('drawer');
