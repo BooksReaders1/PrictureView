@@ -312,6 +312,13 @@
     }
 
     function loadPagesAroundCurrentPage() {
+        // 如果当前 source 有自己的 loadPagesAroundCurrentPage 实现，则使用它
+        if (state.type && sources[state.type] && sources[state.type].loadPagesAroundCurrentPage) {
+            sources[state.type].loadPagesAroundCurrentPage();
+            return;
+        }
+        
+        // 否则使用默认的懒加载逻辑
         const visiblePages = getVisiblePages();
         if (visiblePages.length === 0) return;
         const currentPage = Math.min(...visiblePages);
