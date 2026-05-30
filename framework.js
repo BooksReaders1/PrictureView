@@ -26,7 +26,7 @@
 
     // 配置常量
     const CONFIG = {
-        MAX_PAGES: 100,
+        MAX_PAGES: 999,
         CONCURRENT_LOAD: 8,
         BATCH_SIZE: 8
     };
