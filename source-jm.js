@@ -34,6 +34,11 @@
 
     // 计算列数（用于图片解密）
     function getCols(aid, pageNum) {
+        // 防御性检查：如果 md5 库未加载（CDN 被墙/加载失败），抛出可捕获的错误，
+        // 而不是让 ReferenceError 中断整个 onload 处理流程导致页面卡死
+        if (typeof md5 !== 'function') {
+            throw new Error('md5 库未加载，无法解密图片（请检查 CDN 脚本是否加载成功）');
+        }
         const e = String(aid).trim();
         const t = String(pageNum).padStart(5, '0');
         const hash = md5(e + t);
@@ -170,8 +175,15 @@
         const container = document.getElementById(`page-${index}`);
         if (!container) return;
         
-        const img = container.querySelector('img');
-        if (!img) return;
+        let img = container.querySelector('img');
+        if (!img) {
+            // 防御：重试时容器内可能已没有 <img>（例如被 showLoading 的 innerHTML 覆盖），
+            // 若直接 return 会导致该页永远停在"加载中/空白"且不再触发后续加载 —— 即白屏卡死
+            console.warn(`页 ${index} 的图片元素缺失，重建后再加载`);
+            container.innerHTML = '';
+            img = createPageElement(index).querySelector('img');
+            container.appendChild(img);
+        }
         
         if (container.classList.contains('loaded') || img.getAttribute('data-loading') === 'true') {
             return;
