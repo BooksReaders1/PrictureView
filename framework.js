@@ -66,7 +66,24 @@
         if (container.querySelector('.loading') || container.querySelector('.error') || container.querySelector('canvas') || container.querySelector('.display-image:not(.source-image)')) {
             return;
         }
-        container.innerHTML = '<div class="loading">加载中</div>';
+        // 关键：保留已有的 <img> 元素（loadPage 已将 onload/onerror 绑定在它上面，
+        // 且后续通过 img.isConnected / parentNode 判断挂载状态）。
+        // 旧实现用 innerHTML = 直接销毁了 <img>，导致 onload 里 processImage 检测到
+        // "图片未挂载"而返回失败 -> 重试时容器里已无 <img> -> loadPage 直接 return
+        // -> 加载链断裂、探测停止推进 -> 页面表现为"前几张正常，之后白屏无响应"。
+        const existingImg = container.querySelector('img');
+        const errorEl = container.querySelector('.error');
+        if (errorEl) errorEl.remove();
+        if (!container.querySelector('.loading')) {
+            const loadingEl = document.createElement('div');
+            loadingEl.className = 'loading';
+            loadingEl.textContent = '加载中';
+            if (existingImg) {
+                container.insertBefore(loadingEl, existingImg);
+            } else {
+                container.appendChild(loadingEl);
+            }
+        }
     }
 
     function showError(container, retryCallback) {
